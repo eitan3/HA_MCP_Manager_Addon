@@ -1,0 +1,14 @@
+---
+# Build configuration for MCP Manager Home Assistant Addon
+# Since we use a custom multi-stage Dockerfile, we don't need build_from
+image: "local/{arch}-addon-mcp_manager"
+
+# Squash layers for smaller image
+squash: false
+
+# Build labels
+labels:
+  org.opencontainers.image.title: "MCP Manager"
+  org.opencontainers.image.description: "Manage MCP servers for AI assistants"
+  org.opencontainers.image.vendor: "Home Assistant Community Add-ons"
+  org.opencontainers.image.licenses: "Apache-2.0"

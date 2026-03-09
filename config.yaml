@@ -1,0 +1,73 @@
+# Home Assistant Addon Configuration
+# MCP Manager - Manage MCP servers for AI assistant integration
+
+name: MCP Manager
+version: "1.0.0"
+slug: mcp_manager
+description: Install, manage, and expose MCP servers via SSE for AI assistant integration
+url: https://github.com/your-repo/ha-mcp-manager
+webui: http://[HOST]:[PORT:14725]
+arch:
+  - armhf
+  - armv7
+  - aarch64
+  - amd64
+  - i386
+startup: services
+boot: auto
+init: false
+
+# Port configuration - Web UI on base port, MCP servers on subsequent ports
+ports:
+  14725/tcp: 14725
+ports_description:
+  14725/tcp: Web UI and Management API (MCP servers use14726+)
+
+# Configuration options exposed to users
+options:
+  base_port: 14725
+  log_level: "info"
+  auto_start_servers: true
+schema:
+  base_port: port
+  log_level: list(debug|info|warning|error)
+  auto_start_servers: bool
+
+# Home Assistant integration
+ingress: true
+ingress_port: 14725
+ingress_entry: /
+panel_icon: mdi:server-network
+panel_title: MCP Manager
+
+# Access to Home Assistant APIs
+homeassistant_api: true
+hassio_api: true
+
+# File system access - needed for MCP servers to access files
+map:
+  - config:rw
+  - share:rw
+  - addon_config:rw
+
+# Environment variables
+environment:
+  NODE_ENV: production
+
+# Host network access for MCP servers that need it
+host_network: false
+
+# Privileged access - not needed for basic operation
+privileged: []
+
+# Devices - can be configured per MCP server needs
+devices: []
+
+# UDEV rules - not needed
+udev: false
+
+# Apparmor profile
+apparmor: false
+
+# Support for multiple MCP server ports
+# Additional ports will be opened dynamically as MCP servers are added
