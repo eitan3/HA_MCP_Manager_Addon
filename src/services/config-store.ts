@@ -175,6 +175,40 @@ export class ConfigStore {
     return server;
   }
 
+  /**
+   * Update the installed version of a server package
+   */
+  async updateServerInstalledVersion(id: string, installedVersion: string): Promise<MCPServerConfig | null> {
+    const index = this.config.servers.findIndex(s => s.id === id);
+    if (index === -1) {
+      return null;
+    }
+
+    const server = this.config.servers[index];
+    server.install.installedVersion = installedVersion;
+    server.updatedAt = new Date().toISOString();
+    await this.save(this.config);
+    logger.debug(`Updated installed version for ${server.name}: ${installedVersion}`);
+    return server;
+  }
+
+  /**
+   * Update the requested version of a server package (for updates)
+   */
+  async updateServerVersion(id: string, version: string): Promise<MCPServerConfig | null> {
+    const index = this.config.servers.findIndex(s => s.id === id);
+    if (index === -1) {
+      return null;
+    }
+
+    const server = this.config.servers[index];
+    server.install.version = version;
+    server.updatedAt = new Date().toISOString();
+    await this.save(this.config);
+    logger.info(`Updated requested version for ${server.name}: ${version}`);
+    return server;
+  }
+
   async deleteServer(id: string): Promise<void> {
     const index = this.config.servers.findIndex(s => s.id === id);
     if (index === -1) {

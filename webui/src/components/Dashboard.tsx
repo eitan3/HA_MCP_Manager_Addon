@@ -1,7 +1,8 @@
 import React from 'react';
 import { Box, Paper, Typography, Grid, Card, CardContent, CardHeader, Chip, Button, CircularProgress, IconButton, Tooltip } from '@mui/material';
-import { PlayArrow, Stop, Refresh as RefreshIcon, Storage as ServerIcon } from '@mui/icons-material';
+import { PlayArrow, Stop, Refresh as RefreshIcon, Storage as ServerIcon, NewReleases as NewReleasesIcon } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 
 interface ServerStatus {
@@ -9,6 +10,13 @@ interface ServerStatus {
   startedAt?: string;
   error?: string;
   lastActivity?: string;
+}
+
+interface VersionInfo {
+  installedVersion: string | null;
+  latestVersion: string | null;
+  isOutdated: boolean;
+  checkError?: string;
 }
 
 interface Server {
@@ -28,6 +36,7 @@ interface AddonStatus {
 
 const Dashboard: React.FC = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: servers, isLoading: serversLoading, error: serversError, refetch: refetchServers } = useQuery<Server[], Error>({
     queryKey: ['servers'],
@@ -39,6 +48,13 @@ const Dashboard: React.FC = () => {
     queryKey: ['status'],
     queryFn: () => api.get('/api/settings/status').then(res => res.data),
     refetchInterval: 5000,
+  });
+
+  // Fetch versions
+  const { data: versions } = useQuery<Record<string, VersionInfo>>({
+    queryKey: ['versions'],
+    queryFn: () => api.get('/api/versions').then((res: { data: Record<string, VersionInfo> }) => res.data),
+    refetchInterval: 60000, // Refresh every minute
   });
 
   const startMutation = useMutation({
@@ -87,6 +103,7 @@ const Dashboard: React.FC = () => {
 
   const runningServers = servers?.filter(s => s.status?.running) || [];
   const stoppedServers = servers?.filter(s => !s.status?.running) || [];
+  const outdatedServers = servers?.filter(s => versions?.[s.id]?.isOutdated) || [];
 
   return (
     <Box>
@@ -119,9 +136,20 @@ const Dashboard: React.FC = () => {
           </Paper>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: 'center' }}>
-            <Typography variant="h3">{Math.floor(status?.uptime || 0)}s</Typography>
-            <Typography variant="body2" color="text.secondary">Uptime</Typography>
+          <Paper 
+            sx={{ 
+              p: 2, 
+              textAlign: 'center', 
+              bgcolor: outdatedServers.length > 0 ? 'warning.dark' : 'grey.800', 
+              color: 'white',
+              cursor: outdatedServers.length > 0 ? 'pointer' : 'default',
+            }}
+            onClick={() => outdatedServers.length > 0 && navigate('/servers')}
+          >
+            <Typography variant="h3">{outdatedServers.length}</Typography>
+            <Typography variant="body2">
+              {outdatedServers.length > 0 ? 'Updates Available' : 'Up to Date'}
+            </Typography>
           </Paper>
         </Grid>
       </Grid>
@@ -138,60 +166,90 @@ const Dashboard: React.FC = () => {
         </Paper>
       ) : (
         <Grid container spacing={2}>
-          {servers?.map(server => (
-            <Grid item xs={12} sm={6} md={4} key={server.id}>
-              <Card>
-                <CardHeader
-                  avatar={<ServerIcon />}
-                  title={server.name}
-                  subheader={
-                    <Box display="flex" alignItems="center" gap={1} mt={0.5}>
-                      <Chip 
-                        label={server.transport} 
-                        size="small" 
-                        color="primary" 
-                        variant="outlined"
-                      />
-                    </Box>
-                  }
-                  action={
-                    <Button 
-                      size="small" 
-                      color={server.status?.running ? 'error' : 'success'} 
-                      startIcon={server.status?.running ? <Stop /> : <PlayArrow />}
-                      onClick={() => handleStartStop(server)}
-                      disabled={startMutation.isPending || stopMutation.isPending}
-                    >
-                      {server.status?.running ? 'Stop' : 'Start'}
-                    </Button>
-                  }
-                />
-                <CardContent>
-                  <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <Chip 
-                      label={server.status?.running ? 'Running' : 'Stopped'} 
-                      color={server.status?.running ? 'success' : 'default'}
-                      size="small"
-                    />
-                    {server.status?.error && (
-                      <Tooltip title={server.status.error}>
+          {servers?.map(server => {
+            const versionInfo = versions?.[server.id];
+            return (
+              <Grid item xs={12} sm={6} md={4} key={server.id}>
+                <Card>
+                  <CardHeader
+                    avatar={<ServerIcon />}
+                    title={server.name}
+                    subheader={
+                      <Box display="flex" alignItems="center" gap={1} mt={0.5}>
                         <Chip 
-                          label="Error" 
-                          color="error" 
+                          label={server.transport} 
+                          size="small" 
+                          color="primary" 
+                          variant="outlined"
+                        />
+                      </Box>
+                    }
+                    action={
+                      <Button 
+                        size="small" 
+                        color={server.status?.running ? 'error' : 'success'} 
+                        startIcon={server.status?.running ? <Stop /> : <PlayArrow />}
+                        onClick={() => handleStartStop(server)}
+                        disabled={startMutation.isPending || stopMutation.isPending}
+                      >
+                        {server.status?.running ? 'Stop' : 'Start'}
+                      </Button>
+                    }
+                  />
+                  <CardContent>
+                    <Box display="flex" justifyContent="space-between" alignItems="center">
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <Chip 
+                          label={server.status?.running ? 'Running' : 'Stopped'} 
+                          color={server.status?.running ? 'success' : 'default'}
                           size="small"
                         />
-                      </Tooltip>
+                        {server.status?.error && (
+                          <Tooltip title={server.status.error}>
+                            <Chip 
+                              label="Error" 
+                              color="error" 
+                              size="small"
+                            />
+                          </Tooltip>
+                        )}
+                      </Box>
+                      {/* Version info */}
+                      {versionInfo && (
+                        <Box display="flex" alignItems="center" gap={0.5}>
+                          {versionInfo.installedVersion ? (
+                            <Chip
+                              label={`v${versionInfo.installedVersion}`}
+                              size="small"
+                              color={versionInfo.isOutdated ? 'warning' : 'success'}
+                              variant="outlined"
+                            />
+                          ) : versionInfo.latestVersion ? (
+                            <Chip
+                              label={`v${versionInfo.latestVersion}`}
+                              size="small"
+                              color="info"
+                              variant="outlined"
+                            />
+                          ) : null}
+                          {versionInfo.isOutdated && (
+                            <Tooltip title={`Update available: ${versionInfo.latestVersion}`}>
+                              <NewReleasesIcon fontSize="small" color="warning" />
+                            </Tooltip>
+                          )}
+                        </Box>
+                      )}
+                    </Box>
+                    {server.status?.startedAt && server.status.running && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                        Started: {new Date(server.status.startedAt).toLocaleString()}
+                      </Typography>
                     )}
-                  </Box>
-                  {server.status?.startedAt && server.status.running && (
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                      Started: {new Date(server.status.startedAt).toLocaleString()}
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })}
         </Grid>
       )}
     </Box>

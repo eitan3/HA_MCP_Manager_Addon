@@ -4,25 +4,30 @@ import helmet from 'helmet';
 import path from 'path';
 import { ConfigStore } from './services/config-store';
 import { logger } from './services/logger';
+import { VersionService } from './services/version-service';
 import { createServerRouter } from './api/servers';
 import { createKeysRouter } from './api/keys';
 import { createSettingsRouter } from './api/settings';
+import { createVersionRouter } from './api/versions';
 import { createSSERouter } from './api/sse';
 import { createAuthMiddleware, createServerAuthMiddleware } from './api/auth';
 import { MCPManager } from './mcp/manager';
 
 const PORT = process.env.PORT || 14725;
 const WEBUI_PATH = process.env.WEBUI_PATH || path.join(__dirname, '..', 'webui');
+const VERSION_CHECK_INTERVAL = parseInt(process.env.VERSION_CHECK_INTERVAL || '3600000', 10); // 1 hour default
 
 class App {
   private app: express.Application;
   private configStore: ConfigStore;
   private mcpManager: MCPManager;
+  private versionService: VersionService;
 
   constructor() {
     this.app = express();
     this.configStore = new ConfigStore();
     this.mcpManager = new MCPManager(this.configStore);
+    this.versionService = new VersionService(this.configStore);
     this.setupMiddleware();
     this.setupRoutes();
     this.setupErrorHandler();
@@ -63,6 +68,7 @@ class App {
         version: '1.0.0',
         endpoints: {
           servers: '/api/servers',
+          versions: '/api/versions',
           keys: '/api/keys',
           settings: '/api/settings',
           sse: '/sse/:serverId',
@@ -76,6 +82,9 @@ class App {
 
     // Server management - requires both auth and server-level authorization
     this.app.use('/api/servers', authMiddleware, serverAuthMiddleware, createServerRouter(this.configStore, this.mcpManager));
+    
+    // Version management
+    this.app.use('/api/versions', authMiddleware, createVersionRouter(this.configStore, this.mcpManager, this.versionService));
     
     // API key management
     this.app.use('/api/keys', authMiddleware, createKeysRouter(this.configStore));
@@ -122,18 +131,40 @@ class App {
         await this.mcpManager.startAllEnabled();
       }
 
+      // Start automatic version checking
+      this.versionService.startAutoCheck(VERSION_CHECK_INTERVAL);
+      logger.info(`Version auto-check enabled (interval: ${VERSION_CHECK_INTERVAL / 60000} minutes)`);
+
       // Start HTTP server
       this.app.listen(PORT, () => {
         logger.info(`MCP Manager started on port ${PORT}`);
         logger.info(`Web UI: http://localhost:${PORT}`);
         logger.info(`Static files served from: ${WEBUI_PATH}`);
         logger.info(`API: http://localhost:${PORT}/api`);
+        logger.info(`API Versions: http://localhost:${PORT}/api/versions`);
         logger.info(`SSE: http://localhost:${PORT}/sse/:serverId`);
       });
+
+      // Handle graceful shutdown
+      process.on('SIGTERM', () => this.shutdown());
+      process.on('SIGINT', () => this.shutdown());
     } catch (error) {
       logger.error('Failed to start application:', error);
       process.exit(1);
     }
+  }
+
+  private async shutdown(): Promise<void> {
+    logger.info('Shutting down...');
+    
+    // Stop version auto-check
+    this.versionService.stopAutoCheck();
+    
+    // Stop all running servers
+    await this.mcpManager.stopAll();
+    
+    logger.info('Shutdown complete');
+    process.exit(0);
   }
 }
 

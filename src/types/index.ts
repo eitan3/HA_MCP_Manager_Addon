@@ -10,7 +10,8 @@ export type InstallType = 'npm' | 'uvx';
 export interface MCPServerInstall {
   type: InstallType;
   package: string;
-  version?: string;
+  version?: string;           // Configured/requested version (user-specified)
+  installedVersion?: string;  // Actual installed version (auto-detected)
 }
 
 export interface MCPServerConfig {
@@ -37,6 +38,25 @@ export interface MCPServerStatus {
 }
 
 // ============================================================================
+// Version Tracking Types
+// ============================================================================
+
+export interface VersionInfo {
+  installedVersion: string | null;  // Currently installed version
+  latestVersion: string | null;     // Latest available in registry
+  availableVersions: string[];      // List of available versions for update dialog
+  lastChecked: string;              // ISO timestamp of last check
+  isOutdated: boolean;              // true if installed < latest
+  checkError?: string;              // Error message if check failed
+}
+
+export interface ServerVersionInfo extends VersionInfo {
+  serverId: string;
+  packageName: string;
+  installType: InstallType;
+}
+
+// ============================================================================
 // API Key Types
 // ============================================================================
 
@@ -47,17 +67,6 @@ export interface APIKey {
   createdAt: string;
   lastUsed?: string;
   serverIds: string[];
-}
-
-// ============================================================================
-// MCPServerConfig Status (for runtime state)
-// ============================================================================
-
-export interface MCPServerStatus {
-  running: boolean;
-  startedAt?: string;
-  error?: string;
-  lastActivity?: string;
 }
 
 // ============================================================================
@@ -106,6 +115,22 @@ export interface UpdateServerRequest {
 export interface CreateAPIKeyRequest {
   name: string;
   serverIds: string[];
+}
+
+// Version update request
+export interface UpdateServerVersionRequest {
+  version: string;  // 'latest' or specific version like '1.2.3'
+}
+
+// Batch version update request
+export interface BatchUpdateVersionRequest {
+  serverIds: string[];
+  version: string;  // 'latest' or specific version
+}
+
+// Version check response for all servers
+export interface AllVersionsResponse {
+  [serverId: string]: VersionInfo;
 }
 
 // ============================================================================

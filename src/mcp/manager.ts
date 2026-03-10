@@ -88,10 +88,18 @@ export class MCPManager {
 
     if (server.install.type === 'npm') {
       command = 'npx';
-      args = ['-y', server.install.package, ...(server.args || [])];
+      // Include version in package name if specified (e.g., package@1.2.3)
+      const pkg = server.install.version && server.install.version !== 'latest'
+        ? `${server.install.package}@${server.install.version}`
+        : server.install.package;
+      args = ['-y', pkg, ...(server.args || [])];
     } else if (server.install.type === 'uvx') {
       command = 'uvx';
-      args = [server.install.package, ...(server.args || [])];
+      // Include version in package name if specified (e.g., package==1.2.3)
+      const pkg = server.install.version && server.install.version !== 'latest'
+        ? `${server.install.package}==${server.install.version}`
+        : server.install.package;
+      args = [pkg, ...(server.args || [])];
     } else {
       throw new Error(`Unknown install type: ${server.install.type}`);
     }
