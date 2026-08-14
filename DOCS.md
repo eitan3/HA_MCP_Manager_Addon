@@ -297,6 +297,7 @@ Configure addon behavior:
 |---------|-------------|
 | Log Level | Verbosity: debug, info, warning, error |
 | Auto-start Servers | Start enabled servers when addon boots |
+| uvx Dependency Constraints | Requirement specifiers applied to every uvx server (one per line, e.g. `mcp<2`). See [Pinning Dependencies](#pinning-dependencies) |
 
 **Connection Information**: Reference SSE endpoint format and authentication methods.
 
@@ -354,8 +355,18 @@ reinstalled. A Python MCP server that worked yesterday can therefore fail today
 because one of its dependencies published a breaking release, even though you
 changed nothing.
 
-Use **Dependency Constraints** to pin those dependencies. Each line is a pip
-requirement specifier and is passed to uvx as `--with`:
+There are two places to pin them, and they are combined:
+
+| Setting | Scope |
+|---------|-------|
+| **Settings → uvx Dependency Constraints** | Every uvx server |
+| **Server → Dependency Constraints** | That one server |
+
+When a dependency breaks *several* Python servers at once — which is the usual
+case, since most of them share the `mcp` SDK — set it globally rather than
+editing each server.
+
+Each line is a pip requirement specifier and is passed to uvx as `--with`:
 
 ```yaml
 Name: Home Assistant TTS
@@ -370,10 +381,18 @@ Transport: stdio
 This runs `uvx --with "mcp<2" homeassistant-tts-mcp`.
 
 > **`mcp` 2.0 (released 2026-07-28) is a breaking change.** `mcp.server.fastmcp`
-> was renamed to `mcp.server.mcpserver`, and `FastMCP` to `MCPServer`. Any Python
-> MCP server that has not migrated yet fails at startup with
-> `ModuleNotFoundError: No module named 'mcp.server.fastmcp'`. Add the constraint
-> `mcp<2` to those servers until upstream releases a v2-compatible version.
+> was renamed to `mcp.server.mcpserver`, and `FastMCP` to `MCPServer`; the
+> low-level `Server` class was reworked at the same time. Python MCP servers that
+> have not migrated fail at startup with
+> `ModuleNotFoundError: No module named 'mcp.server.fastmcp'` or
+> `AttributeError: 'Server' object has no attribute 'list_tools'`. Set
+> `mcp<2` in **Settings → uvx Dependency Constraints** to pin all of them at once.
+>
+> Servers built on the standalone `fastmcp` package (3.x) are unaffected — it
+> already requires `mcp<2.0` itself, so the constraint is a no-op for them.
+
+The addon recognises both failure signatures and logs a `HINT:` line naming the
+fix, so you don't have to match the traceback to this section yourself.
 
 **Popular Python MCP Servers:**
 - `mcp-server-sqlite` - SQLite database access
@@ -1191,6 +1210,9 @@ Location: `/config/mcp_manager/config.yaml`
 settings:
   log_level: info
   auto_start_servers: true
+  # Applied to every uvx server, on top of each server's install.constraints
+  uvx_constraints:
+    - "mcp<2"
 
 servers:
   - id: "abc-123-def"
@@ -1263,26 +1285,38 @@ uvx mcp-server-sqlite /config/home-assistant_v2.db
 #### Python Server Fails with `No module named 'mcp.server.fastmcp'`
 
 **Symptoms:**
-- A `uvx` server that previously worked now exits with code 1
+- Several `uvx` servers that previously worked all exit with code 1 at once
 - Logs show a traceback ending in
-  `ModuleNotFoundError: No module named 'mcp.server.fastmcp'`
+  `ModuleNotFoundError: No module named 'mcp.server.fastmcp'`, or
+  `AttributeError: 'Server' object has no attribute 'list_tools'`
 - Often appears right after the addon or Home Assistant is updated
 
 **Cause:**
 Updating rebuilds the addon container, which wipes the uv cache. uvx re-resolves
-the server's dependencies and picks up `mcp` 2.0+, where `mcp.server.fastmcp`
-was renamed to `mcp.server.mcpserver`. Servers that still import the old path
-break. Nothing about your configuration changed.
+each server's dependencies and picks up `mcp` 2.0+, where `mcp.server.fastmcp`
+was renamed to `mcp.server.mcpserver` and the low-level `Server` class was
+reworked. Servers that still use the old API break. Nothing about your
+configuration changed, which is why it usually hits several servers at once.
 
 **Solution:**
-Edit the server and add `mcp<2` to **Dependency Constraints**, then restart it.
-See [Pinning Dependencies](#pinning-dependencies). Remove the constraint once
-upstream ships a release that supports `mcp` 2.x.
+Set `mcp<2` in **Settings → uvx Dependency Constraints** and restart the affected
+servers. That covers every Python server in one place; use a server's own
+**Dependency Constraints** field only if you need to pin one differently. See
+[Pinning Dependencies](#pinning-dependencies). Remove the constraint once
+upstream ships releases that support `mcp` 2.x.
+
+**Verifying:**
+The addon logs the fully resolved command for every server it starts, so you can
+confirm the constraint is actually being applied:
 
 ```bash
-# Verify inside the addon container
-uvx --with "mcp<2" homeassistant-tts-mcp
+# Expected in the addon log after setting the constraint
+[<server-id>] Starting: uvx --with mcp<2 homeassistant-tts-mcp
 ```
+
+If that line shows a bare `uvx <package>` with no `--with`, the constraint did
+not reach the server - check that you saved the setting and restarted the server
+rather than only reloading the page.
 
 #### SSE Connection Fails
 

@@ -10,6 +10,7 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  TextField,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
@@ -17,6 +18,7 @@ import api from '../api/client';
 interface Settings {
   log_level: 'debug' | 'info' | 'warning' | 'error';
   auto_start_servers: boolean;
+  uvx_constraints: string[];
 }
 
 const Settings: React.FC = () => {
@@ -24,7 +26,9 @@ const Settings: React.FC = () => {
   const [settings, setSettings] = React.useState<Settings>({
     log_level: 'info',
     auto_start_servers: true,
+    uvx_constraints: [],
   });
+  const [constraintsText, setConstraintsText] = React.useState('');
   const [saved, setSaved] = React.useState(false);
 
   const { data: currentSettings, isLoading } = useQuery<Settings>({
@@ -34,9 +38,17 @@ const Settings: React.FC = () => {
 
   React.useEffect(() => {
     if (currentSettings) {
-      setSettings(currentSettings);
+      setSettings({ ...currentSettings, uvx_constraints: currentSettings.uvx_constraints || [] });
+      setConstraintsText((currentSettings.uvx_constraints || []).join('\n'));
     }
   }, [currentSettings]);
+
+  const handleSave = () => {
+    updateMutation.mutate({
+      ...settings,
+      uvx_constraints: constraintsText.split('\n').map(l => l.trim()).filter(Boolean),
+    });
+  };
 
   const updateMutation = useMutation({
     mutationFn: (updates: Partial<Settings>) =>
@@ -85,10 +97,28 @@ const Settings: React.FC = () => {
             label="Auto-start enabled servers on addon startup"
           />
 
+          <TextField
+            fullWidth
+            label="uvx Dependency Constraints"
+            value={constraintsText}
+            onChange={(e) => setConstraintsText(e.target.value)}
+            multiline
+            rows={3}
+            sx={{ mt: 3, mb: 1 }}
+            placeholder={"mcp<2"}
+            helperText={
+              'Applied to every uvx (Python) server, on top of any constraints set on the ' +
+              'server itself. One pip requirement specifier per line, passed to uvx as --with. ' +
+              'Use this to pin a shared dependency across all Python servers at once - e.g. ' +
+              "'mcp<2' for servers that have not migrated to the mcp 2.x API. Restart the " +
+              'affected servers after saving.'
+            }
+          />
+
           <Box sx={{ mt: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
             <Button
               variant="contained"
-              onClick={() => updateMutation.mutate(settings)}
+              onClick={handleSave}
               disabled={updateMutation.isPending}
             >
               Save Settings

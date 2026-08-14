@@ -12,6 +12,10 @@ export interface AppConfig {
   settings: {
     log_level: 'debug' | 'info' | 'warning' | 'error';
     auto_start_servers: boolean;
+    // Requirement specifiers applied to every uvx server, on top of each
+    // server's own install.constraints. One entry here pins a dependency
+    // across the whole fleet instead of server by server.
+    uvx_constraints: string[];
   };
   servers: MCPServerConfig[];
   api_keys: APIKey[];
@@ -21,6 +25,7 @@ const defaultConfig: AppConfig = {
   settings: {
     log_level: 'info',
     auto_start_servers: true,
+    uvx_constraints: [],
   },
   servers: [],
   api_keys: [],
@@ -77,6 +82,9 @@ export class ConfigStore {
       // Ensure required fields exist (migration support)
       if (!this.config.settings) {
         this.config.settings = { ...defaultConfig.settings };
+      }
+      if (!Array.isArray(this.config.settings.uvx_constraints)) {
+        this.config.settings.uvx_constraints = [];
       }
       if (!this.config.servers) {
         this.config.servers = [];

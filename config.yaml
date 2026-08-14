@@ -2,7 +2,7 @@
 # MCP Manager - Manage MCP servers for AI assistant integration
 
 name: MCP Manager
-version: "1.1.0"
+version: "1.2.0"
 slug: mcp_manager
 description: Install, manage, and expose MCP servers via SSE for AI assistant integration
 url: https://github.com/your-repo/ha-mcp-manager

@@ -21,7 +21,17 @@ export function createSettingsRouter(configStore: ConfigStore): Router {
     try {
       const updates = req.body;
       const config = configStore.getConfig();
-      
+
+      if (updates.uvx_constraints !== undefined) {
+        if (!Array.isArray(updates.uvx_constraints) ||
+            updates.uvx_constraints.some((c: unknown) => typeof c !== 'string')) {
+          return res.status(400).json({ error: 'uvx_constraints must be an array of strings' });
+        }
+        updates.uvx_constraints = updates.uvx_constraints
+          .map((c: string) => c.trim())
+          .filter(Boolean);
+      }
+
       // Merge updates
       config.settings = {
         ...config.settings,

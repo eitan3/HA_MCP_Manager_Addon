@@ -26,7 +26,18 @@ interface RunningServer {
   pendingRequests: Map<number, PendingRequest>;  // Keyed by internal request ID
   nextRequestId: number;  // Counter for generating unique internal IDs
   stdoutBuffer: string;
+  hintedMcpV2?: boolean;  // Whether the mcp 2.x incompatibility hint was logged
 }
+
+// mcp 2.0.0 (2026-07-28) renamed mcp.server.fastmcp to mcp.server.mcpserver and
+// reworked the low-level Server class. Python MCP servers that have not migrated
+// die at import time, and the traceback alone doesn't say what to do about it.
+const MCP_V2_FAILURE_SIGNATURES = [
+  "No module named 'mcp.server.fastmcp'",
+  'cannot import name \'FastMCP\'',
+  "'Server' object has no attribute 'list_tools'",
+  "'Server' object has no attribute 'call_tool'",
+];
 
 export class MCPManager {
   private runningServers: Map<string, RunningServer> = new Map();
@@ -82,13 +93,46 @@ export class MCPManager {
     }
   }
 
+  /**
+   * Recognise the mcp 2.x incompatibility in a server's stderr and log what to
+   * do about it. The underlying tracebacks name a missing module or attribute
+   * and give no indication that the cause is a dependency that moved on.
+   */
+  private checkForMcpV2Failure(
+    server: MCPServerConfig,
+    runningServer: RunningServer,
+    output: string
+  ): void {
+    if (runningServer.hintedMcpV2 || server.install.type !== 'uvx') {
+      return;
+    }
+    if (!MCP_V2_FAILURE_SIGNATURES.some(sig => output.includes(sig))) {
+      return;
+    }
+
+    runningServer.hintedMcpV2 = true;
+    const hint =
+      `${server.name} looks incompatible with mcp 2.x. ` +
+      `This package has not migrated to the renamed mcp.server.mcpserver API. ` +
+      `Add 'mcp<2' to Settings > uvx Dependency Constraints to pin every Python ` +
+      `server, or to this server's Dependency Constraints to pin just this one.`;
+    this.addLog(runningServer, `HINT: ${hint}`);
+    logger.error(`[${server.id}] HINT: ${hint}`);
+  }
+
   private async startStdioServer(server: MCPServerConfig, runningServer: RunningServer): Promise<void> {
     let command: string;
     let args: string[] = [];
 
-    const constraints = (server.install.constraints || [])
-      .map(c => c.trim())
-      .filter(Boolean);
+    // Global constraints apply to every uvx server; per-server constraints are
+    // layered on top. Deduplicated so an entry repeated in both places doesn't
+    // produce a redundant --with flag.
+    const globalConstraints = this.configStore.getConfig().settings?.uvx_constraints || [];
+    const constraints = [...new Set(
+      [...globalConstraints, ...(server.install.constraints || [])]
+        .map(c => c.trim())
+        .filter(Boolean)
+    )];
 
     if (server.install.type === 'npm') {
       command = 'npx';
@@ -98,7 +142,9 @@ export class MCPManager {
         : server.install.package;
       args = ['-y', pkg, ...(server.args || [])];
       if (constraints.length > 0) {
-        this.addLog(runningServer, `WARNING: dependency constraints are only supported for uvx servers, ignoring: ${constraints.join(', ')}`);
+        const warning = `dependency constraints are only supported for uvx servers, ignoring: ${constraints.join(', ')}`;
+        this.addLog(runningServer, `WARNING: ${warning}`);
+        logger.warn(`[${server.id}] ${warning}`);
       }
     } else if (server.install.type === 'uvx') {
       command = 'uvx';
@@ -116,7 +162,12 @@ export class MCPManager {
       throw new Error(`Unknown install type: ${server.install.type}`);
     }
 
-    this.addLog(runningServer, `Starting: ${command} ${args.join(' ')}`);
+    // Log the fully resolved command to the addon log, not just the per-server
+    // buffer - when a server dies at startup this is the first thing needed to
+    // tell a configuration problem from a broken package.
+    const commandLine = `${command} ${args.join(' ')}`;
+    this.addLog(runningServer, `Starting: ${commandLine}`);
+    logger.info(`[${server.id}] Starting: ${commandLine}`);
 
     const env = {
       ...process.env,
@@ -148,6 +199,7 @@ export class MCPManager {
       this.addLog(runningServer, `STDERR: ${output.trim()}`);
       // Log stderr as error level so it shows in addon logs
       logger.error(`[${server.id}] STDERR: ${output.trim()}`);
+      this.checkForMcpV2Failure(server, runningServer, output);
     });
 
     childProcess.on('error', (error: Error) => {
