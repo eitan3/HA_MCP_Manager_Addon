@@ -12,6 +12,7 @@ import { createVersionRouter } from './api/versions';
 import { createSSERouter } from './api/sse';
 import { createAuthMiddleware, createServerAuthMiddleware } from './api/auth';
 import { MCPManager } from './mcp/manager';
+import { ADDON_VERSION } from './version';
 
 const PORT = process.env.PORT || 14725;
 const WEBUI_PATH = process.env.WEBUI_PATH || path.join(__dirname, '..', 'webui');
@@ -65,7 +66,7 @@ class App {
     this.app.get('/api', (req: Request, res: Response) => {
       res.json({
         name: 'MCP Manager API',
-        version: '1.0.0',
+        version: ADDON_VERSION,
         endpoints: {
           servers: '/api/servers',
           versions: '/api/versions',
@@ -120,6 +121,10 @@ class App {
 
   async start(): Promise<void> {
     try {
+      // Log the running version first, before anything else can fail. Without
+      // this there is no way to tell from the addon log which build is live.
+      logger.info(`MCP Manager v${ADDON_VERSION} starting (node ${process.version})`);
+
       // Load configuration
       await this.configStore.load();
       logger.info('Configuration loaded');

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { ConfigStore } from '../services/config-store';
 import { logger } from '../services/logger';
+import { ADDON_VERSION } from '../version';
 
 export function createSettingsRouter(configStore: ConfigStore): Router {
   const router = Router();
@@ -54,7 +55,7 @@ export function createSettingsRouter(configStore: ConfigStore): Router {
       
       const status = {
         uptime: process.uptime(),
-        version: '1.0.0',
+        version: ADDON_VERSION,
         serversTotal: servers.length,
         serversRunning: servers.filter(s => s.status?.running).length,
         memoryUsage: process.memoryUsage(),
@@ -72,7 +73,7 @@ export function createSettingsRouter(configStore: ConfigStore): Router {
     try {
       const info = {
         name: 'MCP Manager',
-        version: '1.0.0',
+        version: ADDON_VERSION,
         description: 'Manage MCP servers for AI assistant integration',
         author: 'Your Name',
         homepage: 'https://github.com/your-repo/ha-mcp-manager',

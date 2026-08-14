@@ -1282,6 +1282,34 @@ npx -y @modelcontextprotocol/server-filesystem /config
 uvx mcp-server-sqlite /config/home-assistant_v2.db
 ```
 
+#### An Update Doesn't Seem to Take Effect
+
+**Symptoms:**
+- A fix or new setting from a newer version doesn't change anything
+- New log lines documented for that version never appear
+
+**First, check which build is actually running.** Every start logs its version as
+the first line:
+
+```bash
+# Expected at the top of the addon log
+MCP Manager v1.2.1 starting (node v20.20.2)
+```
+
+The same value is served at `GET /api` and `GET /api/settings/info`. If that
+version is older than the one you expect, the container was never rebuilt and no
+amount of configuration will help.
+
+**Getting the new build in:**
+
+| How the addon was installed | What to do |
+|---|---|
+| Local addon in `/addons/...` | `git pull` in that directory, then **Settings → Add-ons → MCP Manager → ⋮ → Rebuild**. "Restart" only restarts the existing container - it does not rebuild the image. |
+| Added as an add-on repository | **Add-on Store → ⋮ → Check for updates**, then **Update** on the MCP Manager page. |
+
+A plain **Restart** never picks up new code. Rebuilding also wipes the uv and npx
+caches, so the first start afterwards is slow while packages download again.
+
 #### Python Server Fails with `No module named 'mcp.server.fastmcp'`
 
 **Symptoms:**
