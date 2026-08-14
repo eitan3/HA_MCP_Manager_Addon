@@ -272,6 +272,7 @@ Configure MCP servers with these fields:
 | Install Type | Yes | `npm` or `uvx` |
 | Package Name | Yes | Package to install (e.g., `@modelcontextprotocol/server-filesystem`) |
 | Version | No | Package version (default: `latest`) |
+| Dependency Constraints | No | uvx only. Pin transitive dependencies, one pip requirement specifier per line (e.g. `mcp<2`) |
 | Transport Type | Yes | `stdio` (recommended) or `sse` |
 | Command Arguments | No | Arguments passed to the MCP server (one per line) |
 | Environment Variables | No | Environment variables in `KEY=VALUE` format |
@@ -343,6 +344,36 @@ Arguments:
 ```
 
 The addon runs these using `uvx <package> <args>`.
+
+#### Pinning Dependencies
+
+`uvx` resolves a package's dependencies to the newest compatible release every
+time it builds the tool environment, and that environment lives inside the addon
+container — so it is rebuilt from scratch whenever the addon is updated or
+reinstalled. A Python MCP server that worked yesterday can therefore fail today
+because one of its dependencies published a breaking release, even though you
+changed nothing.
+
+Use **Dependency Constraints** to pin those dependencies. Each line is a pip
+requirement specifier and is passed to uvx as `--with`:
+
+```yaml
+Name: Home Assistant TTS
+Install Type: uvx
+Package: homeassistant-tts-mcp
+Version: latest
+Dependency Constraints:
+  mcp<2
+Transport: stdio
+```
+
+This runs `uvx --with "mcp<2" homeassistant-tts-mcp`.
+
+> **`mcp` 2.0 (released 2026-07-28) is a breaking change.** `mcp.server.fastmcp`
+> was renamed to `mcp.server.mcpserver`, and `FastMCP` to `MCPServer`. Any Python
+> MCP server that has not migrated yet fails at startup with
+> `ModuleNotFoundError: No module named 'mcp.server.fastmcp'`. Add the constraint
+> `mcp<2` to those servers until upstream releases a v2-compatible version.
 
 **Popular Python MCP Servers:**
 - `mcp-server-sqlite` - SQLite database access
@@ -1169,6 +1200,8 @@ servers:
       type: npm
       package: "@modelcontextprotocol/server-filesystem"
       version: "latest"
+      # uvx only - extra requirement specifiers passed as `uvx --with <spec>`
+      constraints: []
     transport: stdio
     args:
       - "/config"
@@ -1225,6 +1258,30 @@ npx -y @modelcontextprotocol/server-filesystem /config
 
 # Test uvx package
 uvx mcp-server-sqlite /config/home-assistant_v2.db
+```
+
+#### Python Server Fails with `No module named 'mcp.server.fastmcp'`
+
+**Symptoms:**
+- A `uvx` server that previously worked now exits with code 1
+- Logs show a traceback ending in
+  `ModuleNotFoundError: No module named 'mcp.server.fastmcp'`
+- Often appears right after the addon or Home Assistant is updated
+
+**Cause:**
+Updating rebuilds the addon container, which wipes the uv cache. uvx re-resolves
+the server's dependencies and picks up `mcp` 2.0+, where `mcp.server.fastmcp`
+was renamed to `mcp.server.mcpserver`. Servers that still import the old path
+break. Nothing about your configuration changed.
+
+**Solution:**
+Edit the server and add `mcp<2` to **Dependency Constraints**, then restart it.
+See [Pinning Dependencies](#pinning-dependencies). Remove the constraint once
+upstream ships a release that supports `mcp` 2.x.
+
+```bash
+# Verify inside the addon container
+uvx --with "mcp<2" homeassistant-tts-mcp
 ```
 
 #### SSE Connection Fails
@@ -1330,14 +1387,14 @@ ha addons restart mcp_manager
 
 ```bash
 # Clone repository
-git clone https://github.com/your-repo/ha-mcp-manager
-cd ha-mcp-manager
+git clone https://github.com/eitan3/HA_MCP_Manager_Addon
+cd HA_MCP_Manager_Addon
 
 # Install backend dependencies
-npm install
+npm ci
 
 # Install frontend dependencies
-cd webui && npm install && cd ..
+cd webui && npm ci && cd ..
 
 # Build backend
 npm run build
@@ -1345,6 +1402,13 @@ npm run build
 # Build frontend
 cd webui && npm run build && cd ..
 ```
+
+> **Use `npm ci`, not `npm install`.** Both `package-lock.json` and
+> `webui/package-lock.json` are committed, and the Docker build installs from
+> them. `npm ci` reproduces exactly that tree; `npm install` may quietly upgrade
+> packages and write a new lock file. When you *do* intend to upgrade a
+> dependency, run `npm install <pkg>@<version>` and commit the updated lock file
+> as part of the change.
 
 ### Running Locally
 

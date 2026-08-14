@@ -5,11 +5,13 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 # Copy package files for backend
-COPY package*.json ./
+COPY package.json package-lock.json ./
 COPY tsconfig.json ./
 
-# Install backend dependencies (use npm install since there's no lock file)
-RUN npm install
+# Install backend dependencies from the lock file. `npm ci` installs the exact
+# tree recorded in package-lock.json, so rebuilding the addon months from now
+# produces the same dependency versions as today rather than resolving fresh.
+RUN npm ci
 
 # Copy backend source code
 COPY src/ ./src/
@@ -19,8 +21,8 @@ RUN npm run build
 
 # Build frontend
 WORKDIR /app/webui
-COPY webui/package*.json ./
-RUN npm install
+COPY webui/package.json webui/package-lock.json ./
+RUN npm ci
 COPY webui/ ./
 RUN npm run build
 

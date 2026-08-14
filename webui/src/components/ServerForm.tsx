@@ -25,6 +25,7 @@ interface ServerData {
     type: string;
     package: string;
     version: string;
+    constraints?: string[];
   };
   transport: string;
   args: string[];
@@ -52,6 +53,7 @@ const ServerForm: React.FC = () => {
 
   const [argsText, setArgsText] = React.useState('');
   const [envText, setEnvText] = React.useState('');
+  const [constraintsText, setConstraintsText] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
 
   // Load server data for editing
@@ -70,6 +72,7 @@ const ServerForm: React.FC = () => {
         .map(([key, value]) => `${key}=${value}`)
         .join('\n');
       setEnvText(envLines);
+      setConstraintsText((serverData.install?.constraints || []).join('\n'));
     }
   }, [serverData]);
 
@@ -118,8 +121,12 @@ const ServerForm: React.FC = () => {
       }
     });
 
+    // Parse dependency constraints (uvx only, one requirement specifier per line)
+    const constraints = constraintsText.split('\n').map(line => line.trim()).filter(Boolean);
+
     const submitData: ServerData = {
       ...formData,
+      install: { ...formData.install, constraints },
       args,
       env,
     };
@@ -202,6 +209,20 @@ const ServerForm: React.FC = () => {
           sx={{ mb: 2 }}
           helperText="Package version or 'latest'"
         />
+
+        {formData.install.type === 'uvx' && (
+          <TextField
+            fullWidth
+            label="Dependency Constraints"
+            value={constraintsText}
+            onChange={(e) => setConstraintsText(e.target.value)}
+            multiline
+            rows={2}
+            sx={{ mb: 2 }}
+            placeholder={"mcp<2"}
+            helperText="Optional. One pip requirement specifier per line, passed to uvx as --with. Use this to pin a dependency when a new release breaks the server — e.g. 'mcp<2' for servers that import mcp.server.fastmcp."
+          />
+        )}
 
         <Divider sx={{ my: 3 }} />
         <Typography variant="subtitle1" gutterBottom>Transport</Typography>

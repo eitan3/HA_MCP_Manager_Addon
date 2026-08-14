@@ -12,9 +12,10 @@ node_modules/
 # Node.js dependencies (frontend)
 webui/node_modules/
 
-# Package lock files (optional - uncomment if you want to ignore)
-# package-lock.json
-# webui/package-lock.json
+# Package lock files are intentionally committed and must NOT be ignored.
+# The Docker build installs with `npm ci`, which requires them; without the
+# lock files every addon rebuild re-resolves dependencies and can pick up a
+# breaking release that was published since the last build.
 
 # ============================================
 # Build Output

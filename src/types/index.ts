@@ -12,6 +12,8 @@ export interface MCPServerInstall {
   package: string;
   version?: string;           // Configured/requested version (user-specified)
   installedVersion?: string;  // Actual installed version (auto-detected)
+  constraints?: string[];     // uvx only: extra requirement specifiers to pin
+                              // transitive dependencies, e.g. ['mcp<2']
 }
 
 export interface MCPServerConfig {

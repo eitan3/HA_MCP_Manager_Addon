@@ -86,6 +86,10 @@ export class MCPManager {
     let command: string;
     let args: string[] = [];
 
+    const constraints = (server.install.constraints || [])
+      .map(c => c.trim())
+      .filter(Boolean);
+
     if (server.install.type === 'npm') {
       command = 'npx';
       // Include version in package name if specified (e.g., package@1.2.3)
@@ -93,13 +97,21 @@ export class MCPManager {
         ? `${server.install.package}@${server.install.version}`
         : server.install.package;
       args = ['-y', pkg, ...(server.args || [])];
+      if (constraints.length > 0) {
+        this.addLog(runningServer, `WARNING: dependency constraints are only supported for uvx servers, ignoring: ${constraints.join(', ')}`);
+      }
     } else if (server.install.type === 'uvx') {
       command = 'uvx';
       // Include version in package name if specified (e.g., package==1.2.3)
       const pkg = server.install.version && server.install.version !== 'latest'
         ? `${server.install.package}==${server.install.version}`
         : server.install.package;
-      args = [pkg, ...(server.args || [])];
+      // Pin transitive dependencies via `--with`. uv resolves the tool's
+      // environment fresh whenever its cache is empty (e.g. after the addon
+      // container is rebuilt), so an unpinned dependency can publish a
+      // breaking major and take a previously working server down with it.
+      const withFlags = constraints.flatMap(c => ['--with', c]);
+      args = [...withFlags, pkg, ...(server.args || [])];
     } else {
       throw new Error(`Unknown install type: ${server.install.type}`);
     }
