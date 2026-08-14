@@ -19,6 +19,7 @@ interface Settings {
   log_level: 'debug' | 'info' | 'warning' | 'error';
   auto_start_servers: boolean;
   uvx_constraints: string[];
+  uvx_auto_pin_mcp: boolean;
 }
 
 const Settings: React.FC = () => {
@@ -27,6 +28,7 @@ const Settings: React.FC = () => {
     log_level: 'info',
     auto_start_servers: true,
     uvx_constraints: [],
+    uvx_auto_pin_mcp: true,
   });
   const [constraintsText, setConstraintsText] = React.useState('');
   const [saved, setSaved] = React.useState(false);
@@ -38,7 +40,11 @@ const Settings: React.FC = () => {
 
   React.useEffect(() => {
     if (currentSettings) {
-      setSettings({ ...currentSettings, uvx_constraints: currentSettings.uvx_constraints || [] });
+      setSettings({
+        ...currentSettings,
+        uvx_constraints: currentSettings.uvx_constraints || [],
+        uvx_auto_pin_mcp: currentSettings.uvx_auto_pin_mcp !== false,
+      });
       setConstraintsText((currentSettings.uvx_constraints || []).join('\n'));
     }
   }, [currentSettings]);
@@ -114,6 +120,21 @@ const Settings: React.FC = () => {
               'affected servers after saving.'
             }
           />
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.uvx_auto_pin_mcp}
+                onChange={(e) => setSettings({ ...settings, uvx_auto_pin_mcp: e.target.checked })}
+              />
+            }
+            label="Auto-pin mcp<2 when a Python server fails on the mcp 2.x API"
+          />
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+            When a uvx server exits at startup because its package still uses the pre-2.0 mcp
+            API, restart it once with <code>mcp&lt;2</code> applied. Skipped when a constraint
+            above already mentions mcp, so an explicit pin always wins.
+          </Typography>
 
           <Box sx={{ mt: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
             <Button

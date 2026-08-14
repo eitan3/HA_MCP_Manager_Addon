@@ -298,6 +298,7 @@ Configure addon behavior:
 | Log Level | Verbosity: debug, info, warning, error |
 | Auto-start Servers | Start enabled servers when addon boots |
 | uvx Dependency Constraints | Requirement specifiers applied to every uvx server (one per line, e.g. `mcp<2`). See [Pinning Dependencies](#pinning-dependencies) |
+| Auto-pin mcp<2 | Restart a uvx server once with `mcp<2` if it fails on the mcp 2.x API change (default: on). See [Automatic Recovery](#automatic-recovery) |
 
 **Connection Information**: Reference SSE endpoint format and authentication methods.
 
@@ -391,8 +392,30 @@ This runs `uvx --with "mcp<2" homeassistant-tts-mcp`.
 > Servers built on the standalone `fastmcp` package (3.x) are unaffected — it
 > already requires `mcp<2.0` itself, so the constraint is a no-op for them.
 
-The addon recognises both failure signatures and logs a `HINT:` line naming the
-fix, so you don't have to match the traceback to this section yourself.
+#### Automatic Recovery
+
+You don't have to configure any of this for the `mcp` 2.x break specifically.
+When a uvx server exits at startup with one of the two signatures above, the
+addon restarts it once with `mcp<2` applied and says so in the log:
+
+```
+[<id>] Starting: uvx homeassistant-tts-mcp
+[<id>] HINT: ha_voice looks incompatible with mcp 2.x ... Retrying once with 'mcp<2'.
+[<id>] Restarting with 'mcp<2' applied automatically
+[<id>] Starting: uvx --with mcp<2 homeassistant-tts-mcp
+```
+
+The retry is deliberately narrow:
+
+- It only fires for servers that **actually failed** with a recognised
+  signature. Servers that start normally are never touched.
+- It happens **once**. If the retry fails too, the server is left down.
+- It is **skipped whenever a constraint already mentions `mcp`**, globally or on
+  the server, so an explicit pin always wins — including a deliberate `mcp>=2`.
+
+Setting `mcp<2` yourself is still worth doing: it avoids the failed first start
+and the retry delay. Turn the behaviour off with **Settings → Auto-pin mcp<2**
+(`uvx_auto_pin_mcp: false`).
 
 **Popular Python MCP Servers:**
 - `mcp-server-sqlite` - SQLite database access
@@ -1213,6 +1236,8 @@ settings:
   # Applied to every uvx server, on top of each server's install.constraints
   uvx_constraints:
     - "mcp<2"
+  # Retry a uvx server once with mcp<2 if it fails on the mcp 2.x API change
+  uvx_auto_pin_mcp: true
 
 servers:
   - id: "abc-123-def"
@@ -1327,8 +1352,10 @@ reworked. Servers that still use the old API break. Nothing about your
 configuration changed, which is why it usually hits several servers at once.
 
 **Solution:**
-Set `mcp<2` in **Settings → uvx Dependency Constraints** and restart the affected
-servers. That covers every Python server in one place; use a server's own
+As of 1.3.0 the addon recovers from this on its own — see
+[Automatic Recovery](#automatic-recovery). If you have turned that off, or want
+to avoid the failed first start, set `mcp<2` in
+**Settings → uvx Dependency Constraints** and restart the affected servers. That covers every Python server in one place; use a server's own
 **Dependency Constraints** field only if you need to pin one differently. See
 [Pinning Dependencies](#pinning-dependencies). Remove the constraint once
 upstream ships releases that support `mcp` 2.x.

@@ -26,7 +26,9 @@ interface RunningServer {
   pendingRequests: Map<number, PendingRequest>;  // Keyed by internal request ID
   nextRequestId: number;  // Counter for generating unique internal IDs
   stdoutBuffer: string;
-  hintedMcpV2?: boolean;  // Whether the mcp 2.x incompatibility hint was logged
+  hintedMcpV2?: boolean;      // Whether the mcp 2.x incompatibility hint was logged
+  autoPinnedMcp?: boolean;    // This run had MCP_V1_PIN added automatically
+  autoPinRetryPending?: boolean;  // Restart with MCP_V1_PIN once this run exits
 }
 
 // mcp 2.0.0 (2026-07-28) renamed mcp.server.fastmcp to mcp.server.mcpserver and
@@ -39,6 +41,18 @@ const MCP_V2_FAILURE_SIGNATURES = [
   "'Server' object has no attribute 'call_tool'",
 ];
 
+// The pin applied automatically when one of the signatures above is seen.
+const MCP_V1_PIN = 'mcp<2';
+
+/**
+ * Whether a set of requirement specifiers already constrains the mcp package.
+ * If the user has expressed an opinion about mcp - any operator, any bound -
+ * it is left alone rather than being second-guessed by the auto-pin.
+ */
+function constrainsMcp(constraints: string[]): boolean {
+  return constraints.some(c => /^mcp\s*[<>=!~]/i.test(c.trim()));
+}
+
 export class MCPManager {
   private runningServers: Map<string, RunningServer> = new Map();
   private configStore: ConfigStore;
@@ -47,7 +61,7 @@ export class MCPManager {
     this.configStore = configStore;
   }
 
-  async startServer(serverId: string): Promise<void> {
+  async startServer(serverId: string, options?: { autoPinMcp?: boolean }): Promise<void> {
     const server = this.configStore.getServer(serverId);
     if (!server) {
       throw new Error(`Server not found: ${serverId}`);
@@ -71,6 +85,7 @@ export class MCPManager {
       pendingRequests: new Map(),
       nextRequestId: 1,  // Start from 1 to avoid confusion with id=0
       stdoutBuffer: '',
+      autoPinnedMcp: options?.autoPinMcp === true,
     };
 
     this.runningServers.set(serverId, runningServer);
@@ -111,13 +126,34 @@ export class MCPManager {
     }
 
     runningServer.hintedMcpV2 = true;
-    const hint =
-      `${server.name} looks incompatible with mcp 2.x. ` +
-      `This package has not migrated to the renamed mcp.server.mcpserver API. ` +
-      `Add 'mcp<2' to Settings > uvx Dependency Constraints to pin every Python ` +
-      `server, or to this server's Dependency Constraints to pin just this one.`;
+
+    const settings = this.configStore.getConfig().settings;
+    const effectiveConstraints = [
+      ...(settings?.uvx_constraints || []),
+      ...(server.install.constraints || []),
+    ];
+    const alreadyPinned = constrainsMcp(effectiveConstraints);
+    const autoPinEnabled = settings?.uvx_auto_pin_mcp !== false;
+
+    // Retry once with the pin applied, unless the run that just failed was
+    // already the retry, mcp is already constrained, or auto-pin is disabled.
+    const canRetry = autoPinEnabled && !alreadyPinned && !runningServer.autoPinnedMcp;
+
+    const cause =
+      `${server.name} looks incompatible with mcp 2.x - this package has not ` +
+      `migrated to the renamed mcp.server.mcpserver API.`;
+    const hint = canRetry
+      ? `${cause} Retrying once with '${MCP_V1_PIN}'. To make this permanent, add ` +
+        `'${MCP_V1_PIN}' to Settings > uvx Dependency Constraints.`
+      : `${cause} Add '${MCP_V1_PIN}' to Settings > uvx Dependency Constraints to pin ` +
+        `every Python server, or to this server's Dependency Constraints to pin just this one.`;
+
     this.addLog(runningServer, `HINT: ${hint}`);
     logger.error(`[${server.id}] HINT: ${hint}`);
+
+    if (canRetry) {
+      runningServer.autoPinRetryPending = true;
+    }
   }
 
   private async startStdioServer(server: MCPServerConfig, runningServer: RunningServer): Promise<void> {
@@ -133,6 +169,12 @@ export class MCPManager {
         .map(c => c.trim())
         .filter(Boolean)
     )];
+
+    // Retry after an auto-detected mcp 2.x incompatibility (see
+    // checkForMcpV2Failure). Only reached when nothing already constrains mcp.
+    if (runningServer.autoPinnedMcp && !constrainsMcp(constraints)) {
+      constraints.push(MCP_V1_PIN);
+    }
 
     if (server.install.type === 'npm') {
       command = 'npx';
@@ -235,6 +277,19 @@ export class MCPManager {
       if (code !== 0 || signal) {
         this.runningServers.delete(server.id);
         logger.info(`[${server.id}] Removed from running servers map due to exit`);
+      }
+
+      // The run failed on a recognised mcp 2.x incompatibility, so bring it
+      // straight back up with the pin applied. Deferred so it happens after
+      // this handler has finished tearing the previous run down.
+      if (runningServer.autoPinRetryPending && code !== 0) {
+        runningServer.autoPinRetryPending = false;
+        setImmediate(() => {
+          logger.info(`[${server.id}] Restarting with '${MCP_V1_PIN}' applied automatically`);
+          this.startServer(server.id, { autoPinMcp: true }).catch(error => {
+            logger.error(`[${server.id}] Automatic retry with '${MCP_V1_PIN}' failed:`, error);
+          });
+        });
       }
     });
 

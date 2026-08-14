@@ -16,6 +16,10 @@ export interface AppConfig {
     // server's own install.constraints. One entry here pins a dependency
     // across the whole fleet instead of server by server.
     uvx_constraints: string[];
+    // When a uvx server dies at startup on a recognised mcp 2.x
+    // incompatibility, restart it once with 'mcp<2' applied. Skipped when
+    // something already constrains mcp.
+    uvx_auto_pin_mcp: boolean;
   };
   servers: MCPServerConfig[];
   api_keys: APIKey[];
@@ -26,6 +30,7 @@ const defaultConfig: AppConfig = {
     log_level: 'info',
     auto_start_servers: true,
     uvx_constraints: [],
+    uvx_auto_pin_mcp: true,
   },
   servers: [],
   api_keys: [],
@@ -85,6 +90,9 @@ export class ConfigStore {
       }
       if (!Array.isArray(this.config.settings.uvx_constraints)) {
         this.config.settings.uvx_constraints = [];
+      }
+      if (typeof this.config.settings.uvx_auto_pin_mcp !== 'boolean') {
+        this.config.settings.uvx_auto_pin_mcp = true;
       }
       if (!this.config.servers) {
         this.config.servers = [];

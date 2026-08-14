@@ -1,6 +1,6 @@
 {
   "name": "ha-mcp-manager",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Home Assistant addon for managing MCP servers with SSE support",
   "main": "dist/index.js",
   "scripts": {
